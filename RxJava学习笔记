@@ -1,0 +1,162 @@
+                                                            初始Rxjava
+
+1 .什么是ReactiveX
+
+微软给的定义是，Rx是一个函数库，让开发者可以利用可观察序列和LINQ风格查询操作符来编写异步和基于事件的程序，使用Rx，开发者可以用Observables表示异步数据流，用LINQ操作符查询异步数据流， 
+用Schedulers参数化异步数据流的并发处理，Rx可以这样定义：Rx = Observables + LINQ + Schedulers。
+
+ReactiveX.io给的定义是，Rx是一个使用可观察数据流进行异步编程的编程接口，ReactiveX结合了观察者模式、迭代器模式和函数式编程的精华。
+
+### 使用Observable的优势
+
+Rx扩展了观察者模式用于支持数据和事件序列，添加了一些操作符，它让你可以声明式的组合这些序列，而无需关注底层的实现：如线程、同步、线程安全、并发数据结构和非阻塞IO。
+
+Observable通过使用最佳的方式访问异步数据序列填补了这个间隙
+
+|     |        单个数据       |         多个数据         |
+|-----|---------------------|-------------------------|
+| 同步 | `T getData()`         | `Iterable<T> getData()`   |
+| 异步 | `Future<T> getData()` | `Observable<T> getData()` |
+
+
+这里给出一些名词的翻译
+
+Reactive 直译为反应性的，有活性的，根据上下文一般翻译为反应式、响应式
+Iterable 可迭代对象，支持以迭代器的形式遍历，许多语言中都存在这个概念
+Observable 可观察对象，在Rx中定义为更强大的Iterable，在观察者模式中是被观察的对象，一旦数据产生或发生变化，会通过某种方式通知观察者或订阅者
+Observer 观察者对象，监听Observable发射的数据并做出响应，Subscriber是它的一个特殊实现
+emit 直译为发射，发布，发出，含义是Observable在数据产生或变化时发送通知给Observer，调用Observer对应的方法，文章里一律译为发射
+items 直译为项目，条目，在Rx里是指Observable发射的数据项，文章里一律译为数据，数据项
+
+
+##Observable
+在ReactiveX中，一个观察者(Observer)订阅一个可观察对象(Observable)。观察者对Observable发射的数据或数据序列作出响应。这种模式可以极大地简化并发操作，
+因为它创建了一个处于待命状态的观察者哨兵，在未来某个时刻响应Observable的通知，不需要阻塞等待Observable发射数据。
+
+定义Observable和Observer ：
+
+在RxJava中，一个实现了_Observer_接口的对象可以订阅(subscribe)一个_Observable_ 类的实例。订阅者(subscriber)对Observable发射(emit)的任何数据或
+数据序列作出响应。这种模式简化了并发操作，因为它不需要阻塞等待Observable发射数据，而是创建了一个处于待命状态的观察者哨兵，哨兵在未来某个时刻
+响应Observable的通知。
+
+
+背景知识
+
+在很多软件编程任务中，或多或少你都会期望你写的代码能按照编写的顺序，一次一个的顺序执行和完成。但是在ReactiveX中，很多指令可能是并行执行的，之后他们的执行结果才会被观察者捕获，顺序是不确定的。
+为达到这个目的，你定义一种获取和变换数据的机制，而不是调用一个方法。在这种机制下，存在一个可观察对象(Observable)，观察者(Observer)订阅(Subscribe)它，当数据就绪时，之前定义的机制就会分发数据给
+一直处于等待状态的观察者哨兵。
+
+这种方法的优点是，如果你有大量的任务要处理，它们互相之间没有依赖关系。你可以同时开始执行它们，不用等待一个完成再开始下一个（用这种方式，你的整个任务队列能耗费的最长时间，不会超过任务里最耗时的那个）。
+
+有很多术语可用于描述这种异步编程和设计模式，在在本文里我们使用这些术语：一个观察者订阅一个可观察对象 (An observer subscribes to an Observable)。通过调用观察者的方法，Observable发射数据或通知给它的观察者。
+
+在其它的文档和场景里，有时我们也将Observer叫做Subscriber、Watcher、Reactor。这个模型通常被称作Reactor模式。
+
+创建观察者
+
+本文使用类似于Groovy的伪代码举例，但是ReactiveX有多种语言的实现。
+
+普通的方法调用（不是某种异步方法，也不是Rx中的并行调用），流程通常是这样的：
+
+调用某一个方法
+用一个变量保存方法返回的结果
+使用这个变量和它的新值做些有用的事
+用代码描述就是：
+
+// make the call, assign its return value to `returnVal`
+returnVal = someMethod(itsParameters);
+// do something useful with returnVal
+在异步模型中流程更像这样的：
+
+定义一个方法，它完成某些任务，然后从异步调用中返回一个值，这个方法是观察者的一部分
+将这个异步调用本身定义为一个Observable
+观察者通过订阅(Subscribe)操作关联到那个Observable
+继续你的业务逻辑，等方法返回时，Observable会发射结果，观察者的方法会开始处理结果或结果集
+用代码描述就是：
+
+// defines, but does not invoke, the Subscriber's onNext handler
+// (in this example, the observer is very simple and has only an onNext handler)
+def myOnNext = { it -> do something useful with it };
+// defines, but does not invoke, the Observable
+def myObservable = someObservable(itsParameters);
+// subscribes the Subscriber to the Observable, and invokes the Observable
+myObservable.subscribe(myOnNext);
+// go on about my business
+
+回调方法 (onNext, onCompleted, onError)
+
+Subscribe方法用于将观察者连接到Observable，你的观察者需要实现以下方法的一个子集：
+
+onNext(T item)
+
+Observable调用这个方法发射数据，方法的参数就是Observable发射的数据，这个方法可能会被调用多次，取决于你的实现。
+
+onError(Exception ex)
+
+当Observable遇到错误或者无法返回期望的数据时会调用这个方法，这个调用会终止Observable，后续不会再调用onNext和onCompleted，onError方法的参数是抛出的异常。
+
+onComplete
+
+正常终止，如果没有遇到错误，Observable在最后一次调用onNext之后调用此方法。
+
+根据Observable协议的定义，onNext可能会被调用零次或者很多次，最后会有一次onCompleted或onError调用（不会同时），传递数据给onNext通常被称作发射，onCompleted和onError被称作通知。
+
+下面是一个更完整的例子：
+
+def myOnNext     = { item -> /* do something useful with item */ };
+def myError      = { throwable -> /* react sensibly to a failed call */ };
+def myComplete   = { /* clean up after the final response */ };
+def myObservable = someMethod(itsParameters);
+myObservable.subscribe(myOnNext, myError, myComplete);
+// go on about my business
+
+Observables的"热"和"冷"
+
+Observable什么时候开始发射数据序列？这取决于Observable的实现，一个"热"的Observable可能一创建完就开始发射数据，因此所有后续订阅它的观察者可能从序列中间的某个位置开始接受数据（有一些数据错过了）。一个"冷"的Observable会一直等待，直到有观察者订阅它才开始发射数据，因此这个观察者可以确保会收到整个数据序列。
+
+在一些ReactiveX实现里，还存在一种被称作Connectable的Observable，不管有没有观察者订阅它，这种Observable都不会开始发射数据，除非Connect方法被调用。
+
+用操作符组合Observable
+
+对于ReactiveX来说，Observable和Observer仅仅是个开始，它们本身不过是标准观察者模式的一些轻量级扩展，目的是为了更好的处理事件序列。
+
+ReactiveX真正强大的地方在于它的操作符，操作符让你可以变换、组合、操纵和处理Observable发射的数据。
+
+Rx的操作符让你可以用声明式的风格组合异步操作序列，它拥有回调的所有效率优势，同时又避免了典型的异步系统中嵌套回调的缺点。
+
+下面是常用的操作符列表：
+
+创建操作 Create, Defer, Empty/Never/Throw, From, Interval, Just, Range, Repeat, Start, Timer
+变换操作 Buffer, FlatMap, GroupBy, Map, Scan和Window
+过滤操作 Debounce, Distinct, ElementAt, Filter, First, IgnoreElements, Last, Sample, Skip, SkipLast, Take, TakeLast
+组合操作 And/Then/When, CombineLatest, Join, Merge, StartWith, Switch, Zip
+错误处理 Catch和Retry
+辅助操作 Delay, Do, Materialize/Dematerialize, ObserveOn, Serialize, Subscribe, SubscribeOn, TimeInterval, Timeout, Timestamp, Using
+条件和布尔操作 All, Amb, Contains, DefaultIfEmpty, SequenceEqual, SkipUntil, SkipWhile, TakeUntil, TakeWhile
+算术和集合操作 Average, Concat, Count, Max, Min, Reduce, Sum
+转换操作 To
+连接操作 Connect, Publish, RefCount, Replay
+反压操作，用于增加特殊的流程控制策略的操作符
+这些操作符并不全都是ReactiveX的核心组成部分，有一些是语言特定的实现或可选的模块。
+
+
+Single
+RxJava（以及它派生出来的RxGroovy和RxScala）中有一个名为Single的Observable变种。
+
+Single类似于Observable，不同的是，它总是只发射一个值，或者一个错误通知，而不是发射一系列的值。
+
+因此，不同于Observable需要三个方法onNext, onError, onCompleted，订阅Single只需要两个方法：
+
+onSuccess - Single发射单个的值到这个方法
+onError - 如果无法发射需要的值，Single发射一个Throwable对象到这个方法
+Single只会调用这两个方法中的一个，而且只会调用一次，调用了任何一个方法之后，订阅关系终止。
+
+Subject
+
+Subject可以看成是一个桥梁或者代理，在某些ReactiveX实现中（如RxJava），它同时充当了Observer和Observable的角色。因为它是一个Observer，
+它可以订阅一个或多个Observable；又因为它是一个Observable，它可以转发它收到(Observe)的数据，也可以发射新的数据。
+
+由于一个Subject订阅一个Observable，它可以触发这个Observable开始发射数据（如果那个Observable是"冷"的--就是说，它等待有订阅才开始发射数据）。
+因此有这样的效果，Subject可以把原来那个"冷"的Observable变成"热"的。
+
+Subject 有四种类型：AsyncSubject，BehaviorSubject，PublishSubject，ReplaySubject
